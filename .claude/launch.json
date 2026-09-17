@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nexaccred-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "nexaccred-react", "run", "dev", "--", "--port", "5173", "--strictPort"],
+      "port": 5173
+    },
+    {
+      "name": "nexaccred-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "nexaccred-api", "run", "start:dev"],
+      "port": 3001
+    }
+  ]
+}

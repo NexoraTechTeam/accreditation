@@ -1,0 +1,28 @@
+{
+  "name": "nexaccred",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "NexAccred — Accreditation Compliance & Readiness Platform",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:standalone": "vite build --config vite.config.standalone.js",
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "vite": "^5.3.1",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}

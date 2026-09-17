@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-surface-subtle text-ink text-sm;
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    @apply bg-brand-100;
+  }
+}
+
+@layer components {
+  /* Knowledge Thread — the connective motif shared with Nexora KMS. Used wherever the UI
+     should say "these things are linked in one graph" (an AI answer to its sources, a
+     pillar to the gaps behind it). */
+  .thread-h {
+    height: 1px;
+    background-image: repeating-linear-gradient(
+      90deg,
+      #2563eb 0 4px,
+      transparent 4px 8px
+    );
+    opacity: 0.4;
+  }
+}

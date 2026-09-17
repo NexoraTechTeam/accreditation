@@ -1,0 +1,288 @@
+erDiagram
+    ACCREDITATION_BODY ||--o{ SCHEME : "accredits"
+    ACCREDITATION_BODY {
+        uuid id PK
+        string short_name
+        string full_name
+        string country
+        string accreditation_number
+        date accredited_since
+        enum status
+    }
+
+    STANDARD ||--o{ STANDARD_VERSION : "has"
+    STANDARD {
+        uuid id PK
+        string name
+        enum type "Accreditation|Supporting"
+        string issuer
+        text description
+        enum status
+    }
+    STANDARD_VERSION ||--o{ CLAUSE : "contains"
+    STANDARD_VERSION {
+        uuid id PK
+        uuid standard_id FK
+        string version_label
+        date effective_date
+        date superseded_date
+    }
+    CLAUSE ||--o{ REQUIREMENT : "defines"
+    CLAUSE {
+        uuid id PK
+        uuid standard_version_id FK
+        string clause_number
+        string title
+    }
+
+    REQUIREMENT ||--o{ APPLICABILITY_RULE : "scoped by"
+    REQUIREMENT ||--o{ COMPLIANCE_CRITERIA : "judged by"
+    REQUIREMENT ||--o{ EVIDENCE_REQUIREMENT : "requires"
+    REQUIREMENT ||--o{ COMPLIANCE_RECORD : "assessed in"
+    REQUIREMENT ||--o{ FINDING : "raised against"
+    REQUIREMENT {
+        uuid id PK
+        string ref_code UK
+        uuid clause_id FK
+        text requirement_text
+        enum requirement_type
+        boolean mandatory
+        date effective_date
+        date expiry_date
+    }
+
+    SCHEME ||--o{ SCHEME_STANDARD : "built on"
+    SCHEME ||--o{ SCHEME_PILLAR_SCORE : "scored by"
+    SCHEME ||--o{ WITNESS_CYCLE : "obligated to"
+    SCHEME ||--o{ ASSESSMENT : "assessed by"
+    SCHEME ||--o{ REQUIRED_DOCUMENT_TYPE : "mandates"
+    SCHEME ||--o{ COMPLIANCE_RECORD : "evaluated for"
+    SCHEME {
+        uuid id PK
+        uuid accreditation_body_id FK
+        string name
+        string full_name
+        enum conformity_type
+        enum lifecycle_status "draft|active|suspended"
+        int client_count
+    }
+    SCHEME_STANDARD }o--|| STANDARD : "references"
+    SCHEME_STANDARD {
+        uuid id PK
+        uuid scheme_id FK
+        uuid standard_id FK
+        boolean is_primary
+    }
+
+    COMPLIANCE_RECORD ||--o{ EVIDENCE : "supported by"
+    COMPLIANCE_RECORD {
+        uuid id PK
+        uuid requirement_id FK
+        uuid scheme_id FK
+        enum compliance_status
+        date last_assessed
+        uuid assessed_by FK
+    }
+
+    EVIDENCE }o--o| DOCUMENT : "may be"
+    EVIDENCE {
+        uuid id PK
+        uuid compliance_record_id FK
+        string evidence_code UK
+        enum evidence_category "Document|Record|Operational|Personnel|System"
+        enum evidence_status
+        date valid_from
+        date valid_until
+        boolean approved
+        timestamp uploaded_at
+    }
+
+    REQUIRED_DOCUMENT_TYPE }o--o| DOCUMENT : "fulfilled by"
+    REQUIRED_DOCUMENT_TYPE {
+        uuid id PK
+        uuid scheme_id FK "null = all schemes"
+        string type_name
+        enum fulfillment_status
+    }
+    DOCUMENT {
+        uuid id PK
+        string name
+        enum doc_type "Policy|Procedure|WorkInstruction|Manual|Form|Record"
+        string version
+        uuid owner_user_id FK
+        date last_reviewed
+        enum status
+    }
+
+    ASSESSMENT ||--o{ FINDING : "produces"
+    ASSESSMENT {
+        uuid id PK
+        uuid scheme_id FK
+        enum assessment_type "Initial|Surveillance|Reassessment|ScopeExtension|Witness|Extraordinary"
+        enum source "InternalAudit|ABAssessment"
+        date scheduled_date
+        date completed_date
+        enum result
+    }
+
+    WITNESS_CYCLE ||--o{ WITNESS_EVENT : "comprises"
+    WITNESS_CYCLE {
+        uuid id PK
+        uuid scheme_id FK
+        int required_count
+        int completed_count
+        date cycle_start
+        date cycle_end
+    }
+    WITNESS_EVENT {
+        uuid id PK
+        uuid witness_cycle_id FK
+        uuid auditor_ref "from AIHCM (employeeId)"
+        string ab_assessor_name
+        date event_date
+        enum result "Pass|MinorNC|MajorNC|Scheduled|Outstanding"
+    }
+
+    FINDING ||--o{ CAPA : "triggers"
+    FINDING {
+        uuid id PK
+        string finding_code UK
+        uuid requirement_id FK
+        uuid scheme_id FK
+        uuid assessment_id FK
+        enum source
+        enum classification "MajorNC|MinorNC|Observation|OFI"
+        enum status
+        uuid owner_user_id FK
+        date due_date
+    }
+
+    CAPA ||--o{ TASK : "broken into"
+    CAPA {
+        uuid id PK
+        string capa_code UK
+        uuid finding_id FK
+        enum stage "Correction|RootCause|CorrectiveAction|Verification|Effectiveness|Closed"
+        uuid owner_user_id FK
+        date due_date
+        date closed_date
+    }
+
+    TASK }o--|| USER : "assigned to"
+    TASK {
+        uuid id PK
+        string task_code UK
+        string title
+        uuid scheme_id FK
+        string source_ref "requirement|finding|capa|risk"
+        uuid assignee_user_id FK
+        date due_date
+        enum status "NotStarted|InProgress|Done"
+        enum priority "Critical|High|Medium|Low"
+    }
+
+    RISK }o--o| SCHEME : "threatens"
+    RISK }o--o| REQUIREMENT : "linked to"
+    RISK {
+        uuid id PK
+        string risk_code UK
+        enum category "Accreditation|Scheme|Competence|Operational|Documentation|Evidence|Assessment"
+        text description
+        enum likelihood
+        enum impact
+        enum status
+    }
+
+    AUDITOR_AUTHORIZATION }o--o| SCHEME : "authorized for"
+    AUDITOR_AUTHORIZATION {
+        uuid id PK
+        uuid personnel_ref "from AIHCM (employeeId) — identity/level only, not owned here"
+        uuid scheme_id FK
+        string standard_ref "e.g. ISO/IEC 27006-2"
+        enum authorization_role "LeadAuditor|Auditor|TechnicalExpert|Witness"
+        date authorized_since
+        date expiry_date
+        enum status "Active|Expired|Suspended"
+    }
+
+    IMPARTIALITY_DECLARATION }o--|| USER : "declared by"
+    IMPARTIALITY_DECLARATION {
+        uuid id PK
+        string declaration_code UK
+        uuid personnel_ref "from AIHCM (employeeId)"
+        string client_name
+        string conflict_type
+        enum status
+        string reviewed_by
+    }
+
+    USER }o--|| ROLE : "holds"
+    USER {
+        uuid id PK
+        string full_name
+        string email UK
+        uuid role_id FK
+        enum status
+        timestamp last_login
+    }
+    ROLE ||--o{ ROLE_PERMISSION : "grants"
+    ROLE {
+        uuid id PK
+        string role_name
+        text description
+    }
+    ROLE_PERMISSION {
+        uuid id PK
+        uuid role_id FK
+        enum entity_domain "Requirements|Evidence|Personnel|FindingsCAPA|Reporting|Administration"
+        enum access_level "NoAccess|View|Edit|Approve"
+    }
+
+    SCHEME_PILLAR_SCORE {
+        uuid id PK
+        uuid scheme_id FK
+        enum pillar "Requirements|Evidence|Personnel|Competence|Operations|Documentation|Assurance|CAPA"
+        int score_pct
+        timestamp calculated_at
+    }
+
+    READINESS_CONFIG {
+        uuid id PK
+        enum pillar
+        int weight_pct
+        int threshold_ready
+        int threshold_risks
+        int threshold_not_yet_ready
+        uuid updated_by FK
+        timestamp updated_at
+    }
+
+    AUDIT_TRAIL }o--|| USER : "performed by"
+    AUDIT_TRAIL {
+        uuid id PK
+        timestamp occurred_at
+        uuid user_id FK
+        string action
+        string entity_type
+        uuid entity_id
+        jsonb before_after
+    }
+
+    EXTERNAL_SYSTEM ||--o{ EXTERNAL_SYNC_LOG : "sync history"
+    EXTERNAL_SYSTEM {
+        uuid id PK
+        enum code "PLATFORM_AUDIT|AIHCM"
+        string display_name
+        string base_url
+        enum auth_type "JWT|ApiKey|OAuth2"
+        boolean enabled
+    }
+    EXTERNAL_SYNC_LOG {
+        uuid id PK
+        uuid external_system_id FK
+        enum domain "Lifecycle|AuditExecution|TechnicalReview|CertificationDecision|PersonnelCompetency"
+        timestamp last_synced_at
+        int records_synced
+        enum status "Success|Partial|Failed"
+        text error_message
+    }

@@ -1,0 +1,618 @@
+// NexAccred database schema — direct translation of 02-ERD-NexAccred.mermaid
+// and 03-Data-Model-NexAccred.md.
+//
+// Enum vs. String choice follows one rule throughout this file: a field becomes
+// a Prisma `enum` only when its vocabulary is fixed by product logic (the
+// readiness engine, a workflow stage, a permission level, a sync domain).
+// Everything the PRD calls out as configurable "without code change" (§6
+// Non-Functional Requirements — Configurability) stays a plain String, because
+// an enum there would recreate the exact rigidity the product is designed to
+// avoid. See inline comments for the reasoning on non-obvious cases.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity & access — System Administrator territory (Data Model §1.3)
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  fullName     String
+  email        String   @unique
+  passwordHash String // bcrypt — see infrastructure/auth/password-hasher.ts
+  roleId       String
+  role         Role     @relation(fields: [roleId], references: [id])
+  status    String   @default("Active")
+  lastLogin DateTime?
+
+  ownedDocuments   Document[]              @relation("DocumentOwner")
+  assignedTasks    Task[]                  @relation("TaskAssignee")
+  findingsOwned    Finding[]               @relation("FindingOwner")
+  capasOwned       Capa[]                  @relation("CapaOwner")
+  complianceChecks ComplianceRecord[]      @relation("ComplianceAssessedBy")
+  declarations     ImpartialityDeclaration[] @relation("DeclarationBy")
+  readinessConfigs ReadinessConfig[]       @relation("ReadinessConfigUpdatedBy")
+  auditTrailEntries AuditTrail[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  roleName    String   @unique
+  description String?
+  users       User[]
+  permissions RolePermission[]
+}
+
+enum EntityDomain {
+  Requirements
+  Evidence
+  Personnel
+  FindingsCAPA
+  Reporting
+  Administration
+}
+
+enum AccessLevel {
+  NoAccess
+  View
+  Edit
+  Approve
+}
+
+// Composed per entity-type, not hard-wired per screen (PRD FR-11.3) — this is
+// the table that makes "System Administrator has zero access to compliance
+// content" an enforced fact, not a UI convention (PRD FR-11.5).
+model RolePermission {
+  id           String       @id @default(uuid())
+  roleId       String
+  role         Role         @relation(fields: [roleId], references: [id])
+  entityDomain EntityDomain
+  accessLevel  AccessLevel
+
+  @@unique([roleId, entityDomain])
+}
+
+// ---------------------------------------------------------------------------
+// Business/domain content — Head of Accreditation territory (Data Model §1.3)
+// ---------------------------------------------------------------------------
+
+model AccreditationBody {
+  id                   String   @id @default(uuid())
+  shortName            String // "KAN", "UKAS", "ANAB"
+  fullName             String
+  country              String
+  accreditationNumber  String   @unique // e.g. KAN-LSSM-045-IDN
+  accreditedSince      DateTime
+  status               String   @default("Active") // configurable vocabulary, not fixed by logic
+
+  schemes Scheme[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Standard {
+  id          String   @id @default(uuid())
+  name        String
+  type        String // "Accreditation" | "Supporting" — configurable, see PRD §6 Configurability
+  issuer      String
+  description String?
+  status      String   @default("Active")
+
+  versions        StandardVersion[]
+  schemeStandards SchemeStandard[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StandardVersion {
+  id             String    @id @default(uuid())
+  standardId     String
+  standard       Standard  @relation(fields: [standardId], references: [id])
+  versionLabel   String
+  effectiveDate  DateTime
+  supersededDate DateTime?
+
+  clauses Clause[]
+}
+
+model Clause {
+  id                String          @id @default(uuid())
+  standardVersionId String
+  standardVersion   StandardVersion @relation(fields: [standardVersionId], references: [id])
+  clauseNumber      String
+  title             String
+
+  requirements Requirement[]
+}
+
+// Fixed by the readiness engine's blocking-rule evaluation (lib/readiness.js
+// port in domain/readiness) — not freely configurable content.
+enum RequirementType {
+  MANDATORY_CLAUSE
+  SUPPORTING_REQUIREMENT
+  RECOMMENDED_PRACTICE
+}
+
+model Requirement {
+  id               String          @id @default(uuid())
+  refCode          String          @unique // e.g. REQ-17021-5.2
+  clauseId         String
+  clause           Clause          @relation(fields: [clauseId], references: [id])
+  requirementText  String
+  requirementType  RequirementType
+  mandatory        Boolean         @default(true)
+  effectiveDate    DateTime
+  expiryDate       DateTime?
+
+  applicabilityRules  ApplicabilityRule[]
+  complianceCriteria  ComplianceCriteria[]
+  evidenceRequirements EvidenceRequirement[]
+  complianceRecords   ComplianceRecord[]
+  findings            Finding[]
+  risks               Risk[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ApplicabilityRule {
+  id            String      @id @default(uuid())
+  requirementId String
+  requirement   Requirement @relation(fields: [requirementId], references: [id])
+  ruleText      String
+}
+
+model ComplianceCriteria {
+  id            String      @id @default(uuid())
+  requirementId String
+  requirement   Requirement @relation(fields: [requirementId], references: [id])
+  criteriaText  String
+}
+
+model EvidenceRequirement {
+  id            String      @id @default(uuid())
+  requirementId String
+  requirement   Requirement @relation(fields: [requirementId], references: [id])
+  description   String
+}
+
+model Scheme {
+  id                  String   @id @default(uuid())
+  accreditationBodyId String
+  accreditationBody   AccreditationBody @relation(fields: [accreditationBodyId], references: [id])
+  name                String
+  fullName            String
+  conformityType      String // configurable — CertificationBody | InspectionBody | ValidationVerificationBody, etc.
+  lifecycleStatus     SchemeLifecycleStatus @default(draft)
+  clientCount         Int      @default(0)
+
+  schemeStandards      SchemeStandard[]
+  pillarScores         SchemePillarScore[]
+  witnessCycles        WitnessCycle[]
+  assessments          Assessment[]
+  requiredDocumentTypes RequiredDocumentType[]
+  complianceRecords    ComplianceRecord[]
+  risks                Risk[]
+  tasks                Task[]
+  auditorAuthorizations AuditorAuthorization[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Fixed — the readiness engine and UI both branch on exactly these three.
+enum SchemeLifecycleStatus {
+  draft
+  active
+  suspended
+}
+
+model SchemeStandard {
+  id         String   @id @default(uuid())
+  schemeId   String
+  scheme     Scheme   @relation(fields: [schemeId], references: [id])
+  standardId String
+  standard   Standard @relation(fields: [standardId], references: [id])
+  isPrimary  Boolean  @default(false)
+
+  @@unique([schemeId, standardId])
+}
+
+// ---------------------------------------------------------------------------
+// Proof & consequence chain (Data Model §1.1)
+// ---------------------------------------------------------------------------
+
+model ComplianceRecord {
+  id                String   @id @default(uuid())
+  requirementId     String
+  requirement       Requirement @relation(fields: [requirementId], references: [id])
+  schemeId          String
+  scheme            Scheme   @relation(fields: [schemeId], references: [id])
+  complianceStatus  String // "Compliant" | "Partially Compliant" | "Non-Compliant" | "Not Applicable" — fixed 4-value CA vocabulary
+  lastAssessed      DateTime?
+  assessedById      String?
+  assessedBy        User?    @relation("ComplianceAssessedBy", fields: [assessedById], references: [id])
+
+  evidence Evidence[]
+
+  @@unique([requirementId, schemeId])
+}
+
+// Fixed — evidence category drives the compliance matrix's 5 fixed columns
+// (Document/Record/Operational/Personnel/System), see nexaccred-react's
+// DataTable and 03-Data-Model-NexAccred.md.
+enum EvidenceCategory {
+  Document
+  Record
+  Operational
+  Personnel
+  System
+}
+
+model Evidence {
+  id                 String           @id @default(uuid())
+  complianceRecordId String
+  complianceRecord   ComplianceRecord @relation(fields: [complianceRecordId], references: [id])
+  evidenceCode       String           @unique
+  evidenceCategory   EvidenceCategory
+  evidenceStatus     String // "Verified" | "Partial" | "Missing" | "Expired" — fixed judgement vocabulary, kept as String to avoid a migration if a 5th state is added by policy
+  validFrom          DateTime?
+  validUntil         DateTime?
+  approved           Boolean          @default(false)
+  uploadedAt         DateTime         @default(now())
+}
+
+model RequiredDocumentType {
+  id                 String  @id @default(uuid())
+  schemeId           String? // null = applies to all schemes
+  scheme             Scheme? @relation(fields: [schemeId], references: [id])
+  typeName           String
+  fulfillmentStatus  String  @default("Missing")
+}
+
+model Document {
+  id           String   @id @default(uuid())
+  name         String
+  docType      String // "Policy" | "Procedure" | "WorkInstruction" | "Manual" | "Form" | "Record" — configurable
+  version      String
+  ownerUserId  String
+  owner        User     @relation("DocumentOwner", fields: [ownerUserId], references: [id])
+  lastReviewed DateTime?
+  status       String   @default("Active")
+}
+
+model Assessment {
+  id             String   @id @default(uuid())
+  schemeId       String
+  scheme         Scheme   @relation(fields: [schemeId], references: [id])
+  assessmentType String // "Initial" | "Surveillance" | "Reassessment" | "ScopeExtension" | "Witness" | "Extraordinary"
+  source         String // "InternalAudit" | "ABAssessment"
+  scheduledDate  DateTime?
+  completedDate  DateTime?
+  result         String?
+  // Read-only mirror pointer into Platform Audit's Audit Execution domain —
+  // opaque by design, see Data Model §1.4. No FK: Platform Audit is not a
+  // local table, so referential integrity is enforced by the sync job, not
+  // the database.
+  externalAuditRef String?
+
+  findings Finding[]
+}
+
+model WitnessCycle {
+  id             String   @id @default(uuid())
+  schemeId       String
+  scheme         Scheme   @relation(fields: [schemeId], references: [id])
+  requiredCount  Int
+  completedCount Int      @default(0)
+  cycleStart     DateTime
+  cycleEnd       DateTime
+
+  events WitnessEvent[]
+}
+
+// Fixed — the readiness blocking rule ("outstanding witnesses with <30 days
+// to the next AB visit cap the scheme at Not Yet Ready") branches on exactly
+// these five values.
+enum WitnessResult {
+  Pass
+  MinorNC
+  MajorNC
+  Scheduled
+  Outstanding
+}
+
+model WitnessEvent {
+  id             String       @id @default(uuid())
+  witnessCycleId String
+  witnessCycle   WitnessCycle @relation(fields: [witnessCycleId], references: [id])
+  // From AIHCM (employeeId) — identity only. NOT a foreign key: AIHCM is a
+  // separate system of record, reached over HTTP by
+  // infrastructure/integrations/aihcm, never joined in SQL. See Data Model §1.5.
+  auditorRef     String?
+  abAssessorName String?
+  eventDate      DateTime
+  result         WitnessResult
+}
+
+// NexAccred-owned — not a mirror. See Data Model §2.7a for why this table
+// exists instead of extending AIHCM's EmployeeCompetency: AIHCM tracks a
+// general proficiency level with no expiry; this table tracks a CAB-specific,
+// time-bound authorization to act as lead auditor/auditor/technical expert
+// against one scheme, which is a conformity-assessment judgement the Head of
+// Accreditation owns.
+enum AuthorizationRole {
+  LeadAuditor
+  Auditor
+  TechnicalExpert
+  Witness
+}
+
+enum AuthorizationStatus {
+  Active
+  Expired
+  Suspended
+}
+
+model AuditorAuthorization {
+  id                String              @id @default(uuid())
+  personnelRef      String // from AIHCM (employeeId) — see infrastructure/integrations/aihcm
+  schemeId          String?
+  scheme            Scheme?             @relation(fields: [schemeId], references: [id])
+  standardRef       String // e.g. "ISO/IEC 27006-2" — free text, mirrors Standard.name informally
+  authorizationRole AuthorizationRole
+  authorizedSince   DateTime
+  expiryDate        DateTime
+  status            AuthorizationStatus @default(Active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([personnelRef])
+}
+
+model Finding {
+  id             String      @id @default(uuid())
+  findingCode    String      @unique
+  requirementId  String
+  requirement    Requirement @relation(fields: [requirementId], references: [id])
+  schemeId       String
+  assessmentId   String?
+  assessment     Assessment? @relation(fields: [assessmentId], references: [id])
+  source         String // "Internal Audit" | "AB Assessment"
+  classification FindingClassification
+  status         String      @default("Open")
+  ownerUserId    String?
+  owner          User?       @relation("FindingOwner", fields: [ownerUserId], references: [id])
+  dueDate        DateTime?
+
+  capas Capa[]
+}
+
+// Fixed — a standard conformity-assessment vocabulary (ISO/IEC 17021-1),
+// not something a CAB configures per its own taste.
+enum FindingClassification {
+  MajorNC
+  MinorNC
+  Observation
+  OFI
+}
+
+// Fixed — CAPA is a linear workflow the domain layer walks explicitly
+// (Finding → Root Cause → Correction → Corrective Action → Verification →
+// Effectiveness → Closure, see nexaccred-react README).
+enum CapaStage {
+  Correction
+  RootCause
+  CorrectiveAction
+  Verification
+  Effectiveness
+  Closed
+}
+
+model Capa {
+  id          String    @id @default(uuid())
+  capaCode    String    @unique
+  findingId   String
+  finding     Finding   @relation(fields: [findingId], references: [id])
+  stage       CapaStage @default(Correction)
+  ownerUserId String?
+  owner       User?     @relation("CapaOwner", fields: [ownerUserId], references: [id])
+  dueDate     DateTime?
+  closedDate  DateTime?
+
+  tasks Task[]
+}
+
+// Fixed — the readiness engine and dashboards compute "overdue" as
+// `status != Done AND dueDate < today`; that logic depends on exactly these
+// three states existing (see lib/readiness.js port).
+enum TaskStatus {
+  NotStarted
+  InProgress
+  Done
+}
+
+enum TaskPriority {
+  Critical
+  High
+  Medium
+  Low
+}
+
+model Task {
+  id           String       @id @default(uuid())
+  taskCode     String       @unique
+  title        String
+  schemeId     String?
+  scheme       Scheme?      @relation(fields: [schemeId], references: [id])
+  // Polymorphic pointer to the originating requirement/finding/capa/risk —
+  // deliberately not a FK; see 03-Data-Model-NexAccred.md §2.8.
+  sourceRef    String?
+  capaId       String?
+  capa         Capa?        @relation(fields: [capaId], references: [id])
+  assigneeUserId String?
+  assignee     User?        @relation("TaskAssignee", fields: [assigneeUserId], references: [id])
+  dueDate      DateTime?
+  status       TaskStatus   @default(NotStarted)
+  priority     TaskPriority @default(Medium)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Risk {
+  id            String       @id @default(uuid())
+  riskCode      String       @unique
+  category      String // "Accreditation" | "Scheme" | "Competence" | "Operational" | "Documentation" | "Evidence" | "Assessment"
+  description   String
+  schemeId      String?
+  scheme        Scheme?      @relation(fields: [schemeId], references: [id])
+  requirementId String?
+  requirement   Requirement? @relation(fields: [requirementId], references: [id])
+  likelihood    String // "Low" | "Medium" | "High" — kept as String: impact/likelihood matrices are frequently reconfigured by risk policy
+  impact        String
+  status        String       @default("Open")
+}
+
+model ImpartialityDeclaration {
+  id                String   @id @default(uuid())
+  declarationCode   String   @unique
+  // From AIHCM (employeeId) — identity only, not a foreign key. See
+  // WitnessEvent.auditorRef for the same pattern.
+  personnelRef      String?
+  reportedByUserId  String
+  reportedBy        User     @relation("DeclarationBy", fields: [reportedByUserId], references: [id])
+  clientName        String
+  conflictType      String
+  status            String   @default("Open")
+  reviewedBy        String?
+}
+
+// ---------------------------------------------------------------------------
+// Readiness — computed, never stored as a scheme field (Data Model §1.2)
+// ---------------------------------------------------------------------------
+
+// Fixed — the 8-pillar model is the readiness engine's whole contract
+// (nexaccred-react/src/lib/readiness.js PILLARS).
+enum Pillar {
+  Requirements
+  Evidence
+  Personnel
+  Competence
+  Operations
+  Documentation
+  Assurance
+  CAPA
+}
+
+// This IS stored, unlike readiness itself, because pillar scores are
+// themselves aggregations over evidence/findings that are expensive to
+// recompute per request. `calculatedAt` makes staleness visible rather than
+// hidden — see Data Model §1.2.
+model SchemePillarScore {
+  id            String   @id @default(uuid())
+  schemeId      String
+  scheme        Scheme   @relation(fields: [schemeId], references: [id])
+  pillar        Pillar
+  scorePct      Int
+  calculatedAt  DateTime @default(now())
+
+  @@unique([schemeId, pillar])
+}
+
+model ReadinessConfig {
+  id                    String   @id @default(uuid())
+  pillar                Pillar   @unique
+  weightPct             Int
+  thresholdReady        Int
+  thresholdRisks        Int
+  thresholdNotYetReady  Int
+  updatedById           String?
+  updatedBy             User?    @relation("ReadinessConfigUpdatedBy", fields: [updatedById], references: [id])
+  updatedAt             DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Audit trail — immutable, System Administrator visibility only (RBAC §Admin)
+// ---------------------------------------------------------------------------
+
+model AuditTrail {
+  id         String   @id @default(uuid())
+  occurredAt DateTime @default(now())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  beforeAfter Json?
+}
+
+// ---------------------------------------------------------------------------
+// External system integration — generalizes the old single-source
+// PLATFORM_AUDIT_SYNC into a registry that supports both Platform Audit and
+// AIHCM (see 03-Data-Model-NexAccred.md §1.4-1.5). Owned by System
+// Administrator: "which external systems are connected" is an access/config
+// decision, not a compliance-content one (RBAC §Administration).
+// ---------------------------------------------------------------------------
+
+enum ExternalSystemCode {
+  PLATFORM_AUDIT
+  AIHCM
+}
+
+enum ExternalAuthType {
+  JWT
+  ApiKey
+  OAuth2
+}
+
+model ExternalSystem {
+  id          String              @id @default(uuid())
+  code        ExternalSystemCode  @unique
+  displayName String
+  baseUrl     String
+  authType    ExternalAuthType
+  enabled     Boolean             @default(true)
+
+  syncLogs ExternalSyncLog[]
+}
+
+enum ExternalSyncDomain {
+  Lifecycle
+  AuditExecution
+  TechnicalReview
+  CertificationDecision
+  PersonnelCompetency
+}
+
+enum ExternalSyncStatus {
+  Success
+  Partial
+  Failed
+}
+
+model ExternalSyncLog {
+  id               String              @id @default(uuid())
+  externalSystemId String
+  externalSystem   ExternalSystem      @relation(fields: [externalSystemId], references: [id])
+  domain           ExternalSyncDomain
+  lastSyncedAt     DateTime            @default(now())
+  recordsSynced    Int                 @default(0)
+  status           ExternalSyncStatus
+  errorMessage     String?
+
+  @@index([externalSystemId, domain])
+}
