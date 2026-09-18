@@ -39,7 +39,7 @@ const RULES = [
   },
   {
     id: 'readiness-why-capped',
-    match: ['kenapa turun', 'why capped', 'why lower', 'turun', 'capped', 'cap ', 'blocked by', 'reasons', 'penyebab', 'critical gap', 'critical issue'],
+    match: ['kenapa turun', 'why capped', 'why lower', 'turun', 'capped', 'cap ', 'blocking', 'blocked', 'aturan blocking', 'r1', 'r2', 'r3', 'r4', 'blocked by', 'reasons', 'penyebab', 'critical gap', 'critical issue'],
     classification: 'ANSWERED_FROM_SOURCE',
     sources: ['DATA_MODEL', 'PROCESS'],
     answer: () =>
