@@ -16,6 +16,7 @@ import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } fro
 import { answerQuestion, CLASSIFICATIONS } from './knowledge';
 import { PROTOTYPE_VERSION, WIDGET_VERSION } from './version';
 import { registerWidget } from './registry';
+import './widget.css';
 
 const shell = {
   position: 'fixed', right: 16, bottom: 16, zIndex: 9999,
@@ -58,6 +59,10 @@ export default function ReadinessWidget({ project, environment = 'review', conte
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('ask');
   const [draft, setDraft] = useState('');
+  // Awareness: teaser bubble (once per session) + unread badge while closed.
+  const [teaser, setTeaser] = useState(() => {
+    try { return !window.sessionStorage.getItem('rr-teaser-shown'); } catch { return true; }
+  });
 
   const reviewer = context?.reviewer || { name: 'reviewer', title: '', role: '' };
 
@@ -73,6 +78,19 @@ export default function ReadinessWidget({ project, environment = 'review', conte
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context?.route]);
+
+  // Awareness effects: teaser auto-dismiss + unread tracking.
+  useEffect(() => {
+    if (!teaser) return;
+    try { window.sessionStorage.setItem('rr-teaser-shown', '1'); } catch { /* noop */ }
+    const t = setTimeout(() => setTeaser(false), 15000);
+    return () => clearTimeout(t);
+  }, [teaser]);
+  useEffect(() => {
+    if (open) setTeaser(false);
+  }, [open]);
+  const openFindings = snap.findings.filter((f) => f.status === 'open').length;
+  const unread = open ? 0 : openFindings;
 
   // Host-embed API bridge (reference parity: RequirementReadiness.open/ask).
   const sendRef = useRef(null);
@@ -116,8 +134,15 @@ export default function ReadinessWidget({ project, environment = 'review', conte
           {tab === 'readiness' && <ReadinessTab snap={snap} store={store} reviewer={reviewer} context={context} />}
         </div>
       )}
-      <button style={fabStyle} onClick={() => setOpen((v) => !v)} title={`AI Assistant v${WIDGET_VERSION}`}>
+      {teaser && !open && (
+        <div className="rr-teaser" onClick={() => { setOpen(true); setTab('ask'); }}>
+          ✦ <b>AI Assistant siap membantu review</b><br />
+          Tanya soal layar ini, catat gap, pantau readiness gate. Klik untuk mulai →
+        </div>
+      )}
+      <button className="rr-fab" style={fabStyle} onClick={() => setOpen((v) => !v)} title={`AI Assistant v${WIDGET_VERSION}`}>
         {open ? '✕ Tutup' : '✦ AI Assistant'}
+        {unread > 0 && <span className="rr-fab-badge">{unread > 9 ? '9+' : unread}</span>}
       </button>
     </div>
   );
