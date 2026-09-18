@@ -135,6 +135,11 @@ export const NAV = [
   { key: 'audit-trail', label: 'Audit Trail', icon: 'list' },
 ];
 
+/** Nav keys hidden from the sidebar (superseded by the floating AI Assistant
+ *  widget). Routes stay registered — direct navigation still works. Remove
+ *  the key here to restore the menu item. */
+export const HIDDEN_NAV_KEYS = ['ai-assistant'];
+
 /** Sub-routes highlight their parent nav item. */
 export const PARENT_NAV = {
   'scheme-detail': 'schemes',

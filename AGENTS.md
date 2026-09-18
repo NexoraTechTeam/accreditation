@@ -21,8 +21,13 @@ cd nexaccred-react && npm install
 npm run dev -- --port 5173 --strictPort
 # buka http://localhost:5173 (VITE_API_BASE_URL=http://localhost:3001)
 
-# Tahap 3 — Full stack (belum dijalankan di sini):
-# butuh Postgres 127.0.0.1:5433 + prisma migrate/seed, lalu npm run start:dev di nexaccred-api/
+# Tahap 3 — Full stack (JALAN di mesin ini sejak 2026-09-18):
+# Postgres 16 lokal ~/.nexaccred-pg (port 5433, role/db nexaccred, trust local)
+#   pg_ctl -D ~/.nexaccred-pg/data -o "-p 5433" -l ~/.nexaccred-pg/server.log start
+# API: cd nexaccred-api && npm install && npx prisma migrate deploy &&
+#   npm run prisma:seed && npm run start:dev   # :3001
+# Smoke TDD: node nexaccred-api/test/api-smoke.mjs  (harus GREEN sebelum klaim "API up")
+# Login demo: joan.marsh@nexaccred.io / NexAccred123! (6 user, lihat nexaccred-api/README)
 ```
 
 ## Aturan kerja di repo ini

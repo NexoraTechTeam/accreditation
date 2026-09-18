@@ -13,6 +13,7 @@ import { logout } from './api/auth';
 import { hasPermission } from './api/permissions';
 import { useFetch } from './hooks/useFetch';
 import { renderScreen } from './screenRegistry';
+import { ReadinessWidget, buildContext, PROJECT_ID } from './widget';
 
 import Login from './screens/Login';
 
@@ -149,19 +150,34 @@ export default function App() {
 
   if (!role) {
     return (
-      <Login
-        onAuthenticated={(id, user) => {
-          setCurrentUser(user);
-          setRoleId(id);
-          navigate(ROLES[id].dashboard);
-        }}
-      />
+      <>
+        <Login
+          onAuthenticated={(id, user) => {
+            setCurrentUser(user);
+            setRoleId(id);
+            navigate(ROLES[id].dashboard);
+          }}
+        />
+        {/* Widget visible pre-login too (reviewer unattributed until sign-in),
+            mirroring the reference prototype's always-on launcher. */}
+        <ReadinessWidget
+          project={PROJECT_ID}
+          context={buildContext({ environment: 'review', role: null, route: 'login', currentUser })}
+        />
+      </>
     );
   }
 
   const activeSchemes = schemeOrder.filter((k) => schemes[k].badge !== 'draft');
   const criticalTotal = activeSchemes.reduce((a, k) => a + schemes[k].tabs.critical.length, 0);
   const nextUp = upcoming.find((u) => u.date);
+
+  /* Requirement Readiness AI Assistant (experiment, Phase 1): floating
+   * review widget. Host-context contract — project, env, prototype version,
+   * route/screen, reviewer — rebuilt every render so Ask/Findings/Session
+   * always reflect the screen under review. Evidence persists to
+   * localStorage keyed by project; see src/widget/. */
+  const readinessCtx = buildContext({ role, route, param, currentUser, weights });
 
   return (
     <div className="flex min-h-screen">
@@ -191,6 +207,7 @@ export default function App() {
           {renderScreen({ route, param, ctx, navigate, taskFilter, setTaskFilter })}
         </main>
       </div>
+      <ReadinessWidget project={PROJECT_ID} context={readinessCtx} />
     </div>
   );
 }

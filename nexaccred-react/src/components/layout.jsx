@@ -1,5 +1,5 @@
 import React from 'react';
-import { NAV, PARENT_NAV } from '../data/roles';
+import { NAV, PARENT_NAV, HIDDEN_NAV_KEYS } from '../data/roles';
 import { NavIcon } from './icons';
 import { BAND_LABEL } from '../lib/readiness';
 import { SearchIcon, SparkleIcon } from './ui';
@@ -18,7 +18,8 @@ export function Sidebar({ role, route, onNavigate, onSwitchRole }) {
       pendingGroup = item.group;
       return;
     }
-    const visible = role.all || role.routes.includes(item.key);
+    const visible =
+      (role.all || role.routes.includes(item.key)) && !HIDDEN_NAV_KEYS.includes(item.key);
     if (!visible) return;
     if (pendingGroup) {
       items.push({ group: pendingGroup });
@@ -107,9 +108,13 @@ export function TopBar({ onNavigate }) {
         Scope: <b className="font-semibold">All Accreditations</b>
       </div>
       <div className="flex-1" />
+      {/* Ask AI hidden: superseded by the floating AI Assistant widget
+          (src/widget/) — kept mounted=false instead of deleted so the
+          ai-assistant route stays reachable; remove entirely once the
+          widget rollout is confirmed. */}
       <div
         onClick={() => onNavigate('ai-assistant')}
-        className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-ai-100 bg-ai-50 px-3 py-2 text-[12.5px] font-semibold text-ai-700"
+        className="hidden cursor-pointer items-center gap-1.5 rounded-lg border border-ai-100 bg-ai-50 px-3 py-2 text-[12.5px] font-semibold text-ai-700"
       >
         <SparkleIcon className="h-3.5 w-3.5" />
         Ask AI

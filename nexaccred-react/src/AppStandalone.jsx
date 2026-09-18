@@ -11,6 +11,7 @@ import {
 import { renderScreen } from './screenRegistry';
 
 import LoginStandalone from './screens/LoginStandalone';
+import { ReadinessWidget, buildContext, PROJECT_ID } from './widget';
 
 /**
  * UI/UX REVIEW BUILD — bundled by vite.config.standalone.js into one
@@ -103,18 +104,29 @@ export default function AppStandalone() {
 
   if (!role) {
     return (
-      <LoginStandalone
-        onSelectRole={(id) => {
-          setRoleId(id);
-          navigate(ROLES[id].dashboard);
-        }}
-      />
+      <>
+        <LoginStandalone
+          onSelectRole={(id) => {
+            setRoleId(id);
+            navigate(ROLES[id].dashboard);
+          }}
+        />
+        <ReadinessWidget
+          project={PROJECT_ID}
+          context={buildContext({ environment: 'review-standalone', role: null, route: 'login' })}
+        />
+      </>
     );
   }
 
   const activeSchemes = schemeOrder.filter((k) => schemes[k].badge !== 'draft');
   const criticalTotal = activeSchemes.reduce((a, k) => a + schemes[k].tabs.critical.length, 0);
   const nextUp = upcoming.find((u) => u.date);
+
+  /* Requirement Readiness AI Assistant (experiment, Phase 1) — same widget
+   * as the live app; reviewer identity comes from the local role picker
+   * (no backend session in the standalone review build). */
+  const readinessCtx = buildContext({ environment: 'review-standalone', role, route, param, weights });
 
   return (
     <div className="flex min-h-screen">
@@ -138,6 +150,7 @@ export default function AppStandalone() {
           {renderScreen({ route, param, ctx, navigate, taskFilter, setTaskFilter })}
         </main>
       </div>
+      <ReadinessWidget project={PROJECT_ID} context={readinessCtx} />
     </div>
   );
 }
