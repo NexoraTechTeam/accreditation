@@ -12,11 +12,14 @@
  * invents expected behavior. Every decision control requires an explicit
  * human identity + note.
  */
-import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';import { createStore, SEVERITIES, SIGNOFF_STATUSES, CHECK_AREAS } from './store';
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';import { createStore, SEVERITIES, SIGNOFF_STATUSES, CHECK_AREAS } from './core/store';
 import { answerQuestion, CLASSIFICATIONS } from './knowledge';
-import { PROTOTYPE_VERSION, WIDGET_VERSION } from './version';
-import { registerWidget } from './registry';
-import './widget.css';
+import { PROTOTYPE_VERSION, WIDGET_VERSION, FEEDBACK_APP, QUICK_PROMPTS, AREA_GUIDE, SCREEN_LABELS } from './app.config';
+import { screenSuggestions, buildTour, gateGuidance } from './core/guidance';
+import { registerWidget } from './core/registry';
+import { getIdentity, setIdentity, isValidIdentity } from './core/identity';
+import { outboxSize } from './core/collector';
+import './core/widget.css';
 
 const shell = {
   position: 'fixed', right: 16, bottom: 16, zIndex: 9999,
@@ -43,22 +46,25 @@ const dangerBadge = {
   padding: '1px 8px', marginLeft: 6, background: '#fee2e2', color: '#991b1b',
 };
 
-const QUICK_PROMPTS = [
-  'Apa saja yang harus saya review di layar ini?',
-  'Bagaimana readiness dihitung?',
-  'Apa yang terjadi jika critical issue masih terbuka saat assessment dekat?',
-  'Apakah versi ini sudah siap untuk E2E development?',
-];
 
-export default function ReadinessWidget({ project, environment = 'review', context }) {
+export default function ReadinessWidget({ project, environment = 'review', context, onNavigate }) {
+  // Fase 6 — answer-/tour-driven navigation. The host passes its own
+  // navigate(route); absent it (e.g. pre-login), a no-op keeps the widget
+  // inert rather than throwing.
+  const go = typeof onNavigate === 'function' ? onNavigate : () => {};
   const store = useMemo(
-    () => createStore(project, { environment, prototypeVersion: PROTOTYPE_VERSION }),
+    () => createStore(project, { environment, prototypeVersion: PROTOTYPE_VERSION, feedbackApp: FEEDBACK_APP }),
     [project, environment]
   );
   const snap = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('ask');
   const [draft, setDraft] = useState('');
+  const [tourStep, setTourStep] = useState(null); // Fase 6 guided-tour cursor
+  // Reviewer identity (real human), separate from the demo persona in
+  // `context.reviewer` — the widget refuses to answer until this is set
+  // (owner decision, docs/ai-assistant-widget-rollout-plan.md §7).
+  const [identity, setIdentityState] = useState(() => getIdentity(project));
   // Awareness: teaser bubble (once per session) + unread badge while closed.
   const [teaser, setTeaser] = useState(() => {
     try { return !window.sessionStorage.getItem('rr-teaser-shown'); } catch { return true; }
@@ -95,7 +101,7 @@ export default function ReadinessWidget({ project, environment = 'review', conte
   // Host-embed API bridge (reference parity: RequirementReadiness.open/ask).
   const sendRef = useRef(null);
   useEffect(() => {
-    registerWidget(project, {
+    return registerWidget(project, {
       open: () => { setOpen(true); setTab('ask'); },
       ask: (q) => { setOpen(true); setTab('ask'); if (sendRef.current) sendRef.current(q); },
       reset: () => store.reset(reviewer.name),
@@ -110,6 +116,7 @@ export default function ReadinessWidget({ project, environment = 'review', conte
   }, [snap, store]);
 
   const send = (text) => {
+    if (!identity) return; // identity gate is the UI path; this is defense in depth
     const q = (text ?? draft).trim();
     if (!q) return;
     setDraft('');
@@ -122,16 +129,55 @@ export default function ReadinessWidget({ project, environment = 'review', conte
   };
   sendRef.current = send;
 
+  // Fase 6 — guided tour: walk every mandatory review area in order. Each
+  // step opens the right screen, asks that area's (source-answerable)
+  // prompt, and lets the reviewer mark it and move on. buildTour + AREA_GUIDE
+  // are the SAME grounded map the gate uses, so tour and gate never diverge.
+  const TOUR = useMemo(() => buildTour(CHECK_AREAS, AREA_GUIDE), []);
+  const runTourStep = (i) => {
+    const step = TOUR[i];
+    if (!step) { setTourStep(null); return; }
+    setTourStep(i);
+    setOpen(true);
+    setTab('ask');
+    if (step.route) go(step.route);
+    if (step.prompt) send(step.prompt.question);
+  };
+  const advanceTour = () => {
+    const step = TOUR[tourStep];
+    if (step) store.setCheck(step.key, true, reviewer.name);
+    if (tourStep + 1 < TOUR.length) runTourStep(tourStep + 1);
+    else { setTourStep(null); setTab('readiness'); }
+  };
+
   const baselineApproved = snap.signoff.status === 'APPROVED' || snap.signoff.status === 'APPROVED_WITH_EXCEPTIONS';
 
   return (
     <div style={shell} data-testid="readiness-widget">
       {open && (
         <div style={panelStyle}>
-          <Header context={context} tab={tab} setTab={setTab} findingCount={snap.findings.filter((f) => f.status === 'open').length} />
-          {tab === 'ask' && <AskTab snap={snap} draft={draft} setDraft={setDraft} send={send} store={store} reviewer={reviewer} context={context} baselineApproved={baselineApproved} />}
-          {tab === 'findings' && <FindingsTab snap={snap} store={store} reviewer={reviewer} baselineApproved={baselineApproved} />}
-          {tab === 'readiness' && <ReadinessTab snap={snap} store={store} reviewer={reviewer} context={context} />}
+          {!identity ? (
+            <IdentityGate project={project} onDone={(rec) => setIdentityState(rec)} />
+          ) : (
+            <>
+              <Header context={context} tab={tab} setTab={setTab} findingCount={snap.findings.filter((f) => f.status === 'open').length} />
+              {tourStep !== null && TOUR[tourStep] && (
+                <div style={{ background: '#eef2ff', borderBottom: '1px solid #c7d2fe', padding: '6px 10px', fontSize: 11 }}>
+                  <b>Tur berpandu {tourStep + 1}/{TOUR.length}:</b> {TOUR[tourStep].title}
+                  <div style={{ color: '#475569', margin: '2px 0 5px' }}>{TOUR[tourStep].desc}</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={advanceTour} style={{ fontSize: 11, cursor: 'pointer', background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 6, padding: '3px 9px' }}>✓ Tandai &amp; lanjut</button>
+                    <button onClick={() => setTourStep(null)} style={{ fontSize: 11, cursor: 'pointer', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', padding: '3px 9px' }}>Selesai</button>
+                  </div>
+                </div>
+              )}
+              {tab === 'ask' && <AskTab snap={snap} draft={draft} setDraft={setDraft} send={send} store={store} reviewer={reviewer} context={context} baselineApproved={baselineApproved} startTour={() => runTourStep(0)} />}
+              {tab === 'findings' && <FindingsTab snap={snap} store={store} reviewer={reviewer} baselineApproved={baselineApproved} />}
+              {tab === 'readiness' && <ReadinessTab snap={snap} store={store} reviewer={reviewer} context={context} onNavigate={go} />}
+              {tab === 'trail' && <TrailTab project={project} identity={identity} snap={snap} />}
+              <TransparencyNotice setTab={setTab} />
+            </>
+          )}
         </div>
       )}
       {teaser && !open && (
@@ -149,7 +195,7 @@ export default function ReadinessWidget({ project, environment = 'review', conte
 }
 
 function Header({ context, tab, setTab, findingCount }) {
-  const tabs = [['ask', 'Ask'], ['findings', `Findings${findingCount ? ` (${findingCount})` : ''}`], ['readiness', 'Readiness']];
+  const tabs = [['ask', 'Ask'], ['findings', `Findings${findingCount ? ` (${findingCount})` : ''}`], ['readiness', 'Readiness'], ['trail', 'Jejak saya']];
   return (
     <div style={{ background: '#1e3a8a', color: '#fff', padding: '10px 12px' }}>
       <div style={{ fontWeight: 800, fontSize: 13 }}>✦ Requirement Readiness Assistant</div>
@@ -169,7 +215,84 @@ function Header({ context, tab, setTab, findingCount }) {
   );
 }
 
-function AskTab({ snap, draft, setDraft, send, store, reviewer, context, baselineApproved }) {
+/**
+ * Mandatory once-per-project identity capture. Widget does not answer
+ * anything until this is filled — owner decision, not a UX default.
+ */
+function IdentityGate({ project, onDone }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
+  const submit = () => {
+    if (!isValidIdentity({ name, email })) {
+      setError('Isi nama (min. 2 karakter) dan email yang valid.');
+      return;
+    }
+    onDone(setIdentity(project, { name, email }));
+  };
+  return (
+    <div style={{ padding: 14, fontSize: 12 }}>
+      <div style={{ fontWeight: 800, marginBottom: 6 }}>✦ Sebelum mulai</div>
+      <div style={{ color: '#475569', marginBottom: 10 }}>
+        Pertanyaan, finding, dan layar yang Anda buka di sini <b>direkam</b> untuk
+        melengkapi requirement sebelum sprint development dimulai. Isi identitas Anda
+        satu kali agar jejak ini bisa diatribusikan.
+      </div>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama (wajib)"
+        style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '7px 9px', borderRadius: 8, border: '1px solid #cbd5e1', marginBottom: 6 }} />
+      <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (wajib)"
+        style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '7px 9px', borderRadius: 8, border: '1px solid #cbd5e1', marginBottom: 6 }} />
+      {error && <div style={{ color: '#b91c1c', marginBottom: 6 }}>{error}</div>}
+      <button onClick={submit} style={{ fontSize: 12, fontWeight: 700, background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', width: '100%' }}>
+        Mulai review
+      </button>
+    </div>
+  );
+}
+
+/** Always-visible transparency line — not a one-time toast that disappears. */
+function TransparencyNotice({ setTab }) {
+  return (
+    <div style={{ fontSize: 10, color: '#64748b', padding: '5px 10px', borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
+      Pertanyaan, finding, dan layar yang Anda buka direkam untuk perbaikan requirement.{' '}
+      <button onClick={() => setTab('trail')} style={{ fontSize: 10, color: '#1d4ed8', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>
+        Lihat jejak saya
+      </button>
+    </div>
+  );
+}
+
+/** "Jejak saya" — what has been recorded for THIS reviewer, and what is still queued. */
+function TrailTab({ project, identity, snap }) {
+  const [pending, setPending] = useState(() => outboxSize(project));
+  useEffect(() => {
+    const t = setInterval(() => setPending(outboxSize(project)), 3000);
+    return () => clearInterval(t);
+  }, [project]);
+  return (
+    <div style={{ overflowY: 'auto', padding: 10, maxHeight: 440, fontSize: 12 }}>
+      <div style={{ fontWeight: 800, marginBottom: 4 }}>Jejak saya</div>
+      <div style={{ color: '#475569', marginBottom: 8 }}>
+        Tercatat sebagai <b>{identity.name}</b> ({identity.email}). Semua baris di bawah
+        ini juga dikirim ke server review — tidak hanya tersimpan di browser Anda.
+      </div>
+      <div style={{ marginBottom: 8, padding: '6px 8px', borderRadius: 8, background: pending > 0 ? '#fef9c3' : '#dcfce7' }}>
+        {pending > 0
+          ? `⏳ ${pending} jejak menunggu terkirim (offline / mencoba lagi otomatis).`
+          : '✅ Semua jejak sudah terkirim.'}
+      </div>
+      {snap.events.length === 0 && <div style={{ color: '#64748b' }}>Belum ada aktivitas sesi ini.</div>}
+      {snap.events.slice().reverse().map((e) => (
+        <div key={e.id} style={{ borderBottom: '1px solid #f1f5f9', padding: '5px 2px', fontSize: 11 }}>
+          <b>{e.type}</b> · {new Date(e.at).toLocaleTimeString()}
+          {e.payload?.route && <span> · {e.payload.route}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AskTab({ snap, draft, setDraft, send, store, reviewer, context, baselineApproved, startTour }) {
   const chatRef = useRef(null);
   const msgCount = snap.messages.length;
   // Interaktif: tiap ada pesan baru (tanya/jawab), animasi scroll ke chat
@@ -218,14 +341,24 @@ function AskTab({ snap, draft, setDraft, send, store, reviewer, context, baselin
           </div>
         ))}
       </div>
+      <div style={{ padding: '0 10px 2px', fontSize: 10, color: '#64748b' }}>
+        Saran untuk layar <b>{context?.screen || context?.route || 'ini'}</b>:
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '0 10px 6px' }}>
-        {QUICK_PROMPTS.map((q) => (
-          <button key={q} onClick={() => send(q)}
+        {screenSuggestions(context?.route, CHECK_AREAS, AREA_GUIDE, QUICK_PROMPTS).map(({ label, question }) => (
+          <button key={question} onClick={() => send(question)}
             style={{ fontSize: 11, cursor: 'pointer', border: '1px solid #bfdbfe', background: '#eff6ff',
               borderRadius: 999, padding: '3px 9px', color: '#1e40af' }}>
-            {shortPrompt(q)}
+            {label}
           </button>
         ))}
+        {typeof startTour === 'function' && (
+          <button onClick={startTour}
+            style={{ fontSize: 11, cursor: 'pointer', border: '1px solid #a7f3d0', background: '#ecfdf5',
+              borderRadius: 999, padding: '3px 9px', color: '#065f46' }}>
+            🧭 Mulai tur berpandu
+          </button>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 6, padding: 10, borderTop: '1px solid #e2e8f0' }}>
         <input value={draft} onChange={(e) => setDraft(e.target.value)}
@@ -237,13 +370,6 @@ function AskTab({ snap, draft, setDraft, send, store, reviewer, context, baselin
       </div>
     </div>
   );
-}
-
-function shortPrompt(q) {
-  if (q.startsWith('Apa saja')) return '🧭 Guide my review';
-  if (q.startsWith('Bagaimana')) return '🔍 Validate formula';
-  if (q.startsWith('Apa yang terjadi')) return '🧪 Test edge case';
-  return '✅ Check readiness';
 }
 
 function lastReviewerText(messages, beforeId) {
@@ -340,7 +466,7 @@ function FindingCard({ f, store }) {
   );
 }
 
-function ReadinessTab({ snap, store, reviewer, context }) {
+function ReadinessTab({ snap, store, reviewer, context, onNavigate }) {
   const [by, setBy] = useState(reviewer.name || '');
   const [note, setNote] = useState('');
   const [status, setStatus] = useState('APPROVED');
@@ -374,13 +500,27 @@ function ReadinessTab({ snap, store, reviewer, context }) {
         {gate.done}/{gate.total} area ({gate.percent}%) · {gate.blockers} open blocker ·{' '}
         <b style={{ color: gate.ready ? '#15803d' : '#b91c1c' }}>{gate.ready ? 'GATE PASSED' : 'GATE NOT PASSED'}</b>
       </div>
-      {CHECK_AREAS.map(([k, title, desc]) => (
+      {!gate.ready && (
+        <div style={{ fontSize: 11, color: '#b91c1c', margin: '0 0 6px' }}>
+          ⛔ Sign-off akan ditolak: {gateGuidance(gate, CHECK_AREAS, snap.checks, AREA_GUIDE).reason}. Centang tiap area di bawah — buka layarnya lewat tombol →.
+        </div>
+      )}
+      {CHECK_AREAS.map(([k, title, desc]) => {
+        const route = (AREA_GUIDE[k]?.routes || [])[0];
+        return (
         <label key={k} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', padding: '5px 2px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}>
           <input type="checkbox" checked={!!snap.checks[k]}
             onChange={(e) => store.setCheck(k, e.target.checked, reviewer.name)} style={{ marginTop: 2 }} />
-          <span><b>{title}</b><br /><span style={{ fontSize: 11, color: '#64748b' }}>{desc}</span></span>
+          <span><b>{title}</b>
+            {route && !snap.checks[k] && typeof onNavigate === 'function' && (
+              <button type="button" onClick={(e) => { e.preventDefault(); onNavigate(route); }}
+                style={{ marginLeft: 6, fontSize: 10, cursor: 'pointer', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e40af', borderRadius: 6, padding: '0 6px' }}>
+                → {SCREEN_LABELS[route] || route}
+              </button>
+            )}
+            <br /><span style={{ fontSize: 11, color: '#64748b' }}>{desc}</span></span>
         </label>
-      ))}
+      );})}
       <div style={{ marginTop: 8, borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
         <b>Explicit sign-off</b> (keputusan manusia, versi spesifik):
         <div style={{ fontSize: 11, marginTop: 2 }}>Status: <b>{snap.signoff.status}</b>

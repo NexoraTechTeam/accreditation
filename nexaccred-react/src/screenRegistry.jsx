@@ -5,7 +5,7 @@ import {
   DashboardDocControl, DashboardAdmin,
 } from './screens/Dashboards';
 import {
-  SchemeDetail, AccreditationScope, AccreditationBodies, AbDetail, SchemesTable,
+  SchemeDetail, AccreditationScope, AccreditationBodies, AbDetail, SchemesTable, AssessmentPrep,
 } from './screens/Accreditation';
 import { Readiness, ReadinessMethodology, Tasks, ABAssessment } from './screens/ReadinessScreens';
 import {
@@ -47,9 +47,11 @@ export function renderScreen({ route, param, ctx, navigate, taskFilter, setTaskF
 
     case 'accreditation-scope': return <AccreditationScope ctx={ctx} onNavigate={navigate} />;
     case 'accreditation-profile': return <AccreditationBodies ctx={ctx} onNavigate={navigate} />;
+    case 'ab-register': return <AbRegister ctx={ctx} onNavigate={navigate} />;
     case 'ab-detail': return <AbDetail abId={param} ctx={ctx} onNavigate={navigate} />;
     case 'schemes': return <SchemesTable ctx={ctx} onNavigate={navigate} />;
     case 'scheme-detail': return <SchemeDetail schemeKey={param} ctx={ctx} onNavigate={navigate} />;
+    case 'assessment-prep': return <AssessmentPrep schemeKey={param} ctx={ctx} onNavigate={navigate} />;
 
     case 'readiness': return <Readiness ctx={ctx} onNavigate={navigate} />;
     case 'readiness-methodology': return <ReadinessMethodology ctx={ctx} onNavigate={navigate} />;

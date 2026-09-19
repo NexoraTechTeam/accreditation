@@ -85,11 +85,13 @@ Permissions drive navigation and dashboards, not just API authorisation.
 | Role | Nav items | Dashboard focus |
 |---|---|---|
 | Head of Accreditation | 41 | Readiness gauge, all schemes, why-not-ready, fix-first |
-| Accreditation Staff | 25 | Task queue, schemes in setup, workload snapshot |
+| Accreditation Staff | 24 | Task queue, schemes in setup, workload snapshot |
 | Internal Auditor | 14 | My findings, internal assessment calendar |
 | Document Controller | 9 | Evidence needing attention, records pending, pack completeness |
 | System Administrator | 8 | Users, roles, integrations, audit trail |
-| Impartiality Committee | 5 | Declarations for review, impartiality safeguard watch |
+| Impartiality Committee | 11 | Declarations for review, impartiality safeguard watch |
+
+*(Staff/Impartiality corrected 2026-09-18 from 25/5 to 24/11 — verified against `src/data/roles.js#ROLES[id].routes.length`, generated mechanically by `scripts/gen-knowledge.mjs`; the other four rows already matched code exactly.)*
 
 **Each dashboard is purpose-built, not a trimmed copy.** The Impartiality Committee dashboard is not the executive dashboard with widgets removed — it shows declarations and the impartiality safeguard CAPA, and nothing else.
 

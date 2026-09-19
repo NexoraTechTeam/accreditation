@@ -13,13 +13,19 @@
  *   PRD, DATA_MODEL, RBAC, PROCESS, APP (runtime), WIDGET (experiment)
  */
 
+import { GENERATED_RULES } from './knowledge.generated.js';
+import { createAnswerEngine } from './core/engine.js';
+
 export const SOURCES = {
+  README: '00-README-Document-Index.md',
   PRD: '01-PRD-NexAccred.md',
+  ERD: '02-ERD-NexAccred.mermaid',
   DATA_MODEL: '03-Data-Model-NexAccred.md',
   RBAC: '05-RBAC-Separation-of-Duties.md',
   PROCESS: '04-Business-Process-NexAccred.md',
   APP: 'runtime application state',
   WIDGET: 'docs/widget-readiness-ai-assistant.md (experiment)',
+  CODE: 'kode sumber (auto-generated dari roles.js/screenRegistry.jsx via scripts/gen-knowledge.mjs)',
 };
 
 const WEIGHTS_TEXT = 'Requirements 20%, Evidence 15%, Personnel 10%, Competence 15%, Operations 10%, Documentation 10%, Assurance 10%, CAPA 10%';
@@ -71,7 +77,7 @@ const RULES = [
   },
   {
     id: 'rbac-matrix',
-    match: ['role', 'roles', 'peran', 'permission matrix', 'matriks', 'akses', 'access', 'who can', 'siapa boleh', 'siapa bisa', 'hak akses'],
+    match: ['role', 'roles', 'peran', 'permission matrix', 'matriks', 'akses', 'access', 'who can', 'siapa boleh', 'siapa bisa', 'hak akses', 'rbac', 'rolenya', 'perannya', 'daftar role', 'semua role', 'siapa saja role'],
     classification: 'ANSWERED_FROM_SOURCE',
     sources: ['RBAC'],
     answer: (ctx) =>
@@ -302,43 +308,28 @@ const RULES = [
   },
 ];
 
-/**
- * Best-match wins: rule dengan hit keyword terbanyak menjawab.
- * Skor 0 → CLARIFICATION_NEEDED (jujur tidak tahu + arahan jadi finding).
- */
-export function answerQuestion(question, ctx = {}) {
-  const q = (question || '').toLowerCase();
-  let best = null;
-  let bestScore = 0;
-  for (const rule of RULES) {
-    let score = 0;
-    for (const kw of rule.match) {
-      if (kw && q.includes(kw)) score += kw.length > 4 ? 2 : 1;
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      best = rule;
-    }
-  }
-  if (best) {
-    return {
-      answer: best.answer(ctx),
-      sources: best.sources.map((s) => SOURCES[s]),
-      classification: best.classification,
-    };
-  }
-  return {
-    answer:
-      `Saya tidak menemukan approved source untuk pertanyaan itu di paket NEXACCRED ` +
-      `v1.0 (PRD / Data Model / RBAC / Business Process) atau runtime state — jadi ` +
-      `saya tidak akan mengarang expected behavior. Saran: catat sebagai finding ` +
-      `klasifikasi REQUIREMENT_GAP atau UNRESOLVED_QUESTION di tab Findings, lalu ` +
-      `minta triage manusia. Itu tepat guna widget ini: mengubah pertanyaan ` +
-      `menjadi structured evidence, bukan jawaban karangan.`,
-    sources: [],
-    classification: 'CLARIFICATION_NEEDED',
-  };
-}
+const NOT_FOUND = (candidates) => {
+  const suggestion = candidates.length
+    ? ` Maksud Anda salah satu topik ini — ${candidates.join(' / ')}? Coba pertanyaan yang lebih spesifik.`
+    : '';
+  return (
+    `Saya tidak menemukan approved source untuk pertanyaan itu di paket NEXACCRED ` +
+    `v1.0 (PRD / Data Model / RBAC / Business Process) atau runtime state — jadi ` +
+    `saya tidak akan mengarang expected behavior.${suggestion} Saran: catat sebagai ` +
+    `finding klasifikasi REQUIREMENT_GAP atau UNRESOLVED_QUESTION di tab Findings, ` +
+    `lalu minta triage manusia. Itu tepat guna widget ini: mengubah pertanyaan ` +
+    `menjadi structured evidence, bukan jawaban karangan.`
+  );
+};
+
+/** Matching semantics live in widget/core/engine.js so accreditation and
+ *  academy can never drift into answering the same question differently. */
+export const answerQuestion = createAnswerEngine({
+  manualRules: RULES,
+  generatedRules: GENERATED_RULES,
+  sources: SOURCES,
+  notFound: NOT_FOUND,
+});
 
 function summarizeWeights(weights) {
   try {
