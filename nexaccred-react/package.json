@@ -9,6 +9,9 @@
     "build": "vite build",
     "build:standalone": "vite build --config vite.config.standalone.js",
     "preview": "vite preview",
+    "test:widget": "node src/widget/core/framework-agnostic.smoke.mjs && node src/widget/core/store.smoke.mjs && node src/widget/core/collector.smoke.mjs && node src/widget/knowledge.smoke.mjs && node src/widget/guidance.smoke.mjs",
+    "gen:knowledge": "node scripts/gen-knowledge.mjs",
+    "test:vanilla-shell": "node scripts/verify-vanilla-shell.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },

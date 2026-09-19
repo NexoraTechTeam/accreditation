@@ -11,11 +11,11 @@
  * Any host can inject context and read evidence without React.
  */
 import ReadinessWidget from './ReadinessWidget';
-import { createStore } from './store';
+import { createStore } from './core/store';
 import { answerQuestion, CLASSIFICATIONS, SOURCES } from './knowledge';
 import { buildContext } from './contextAdapter';
-import { PROJECT_ID, PROTOTYPE_VERSION, WIDGET_VERSION } from './version';
-import { registerWidget, widgetHandle } from './registry';
+import { PROJECT_ID, PROTOTYPE_VERSION, WIDGET_VERSION } from './app.config';
+import { registerWidget, widgetHandle } from './core/registry';
 
 export {
   ReadinessWidget,

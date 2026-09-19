@@ -156,6 +156,50 @@ export function SchemeDetail({ schemeKey, ctx, onNavigate }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Assessment prep — real route, honest stub (Fase 2c: this was a dead */
+/* route entirely before — "assessment-prep" is called from the       */
+/* dashboard and scheme-detail "Prepare for Assessment" buttons but    */
+/* had no `case` in screenRegistry.jsx). No fabricated checklist UI —  */
+/* the actual prep workflow (BP-3) is a real feature to scope with the */
+/* owner, not something to improvise here. Point at what already IS   */
+/* real for this scheme instead of dead-ending.                        */
+/* ------------------------------------------------------------------ */
+export function AssessmentPrep({ schemeKey, ctx, onNavigate }) {
+  const { schemes } = ctx;
+  const key = schemes[schemeKey] ? schemeKey : 'iso27001';
+  const s = schemes[key];
+  return (
+    <>
+      <PageHead
+        crumbs={[
+          { label: 'Dashboard', route: 'dashboard' },
+          { label: 'Accreditation Scope', route: 'accreditation-scope' },
+          // PageHead's crumb click only forwards `route`, not a param, so a
+          // scheme-specific crumb here would silently land on the wrong
+          // scheme — the "Buka Scheme Detail" button below passes the real
+          // param instead.
+          { label: s.name },
+          { label: 'Prepare for Assessment' },
+        ]}
+        title={`Prepare for Assessment — ${s.name}`}
+        onNavigate={onNavigate}
+      />
+      <Note tone="orange">
+        <b>Belum diimplementasikan di prototipe ini.</b> Ini bukan asumsi widget — route-nya
+        terdaftar dan tombolnya nyata, tapi checklist persiapan assessment (BP-3: notifikasi
+        45/30/14/7 hari, dokumen wajib per scheme, witness outstanding) belum punya screen. Yang
+        sudah nyata untuk <b>{s.name}</b>: gap critical, missing evidence, dan witness cycle-nya di
+        Scheme Detail; jadwal AB assessment di AB Assessment.
+      </Note>
+      <div className="mt-4 flex gap-2">
+        <Button onClick={() => onNavigate('scheme-detail', key)}>Buka Scheme Detail</Button>
+        <Button onClick={() => onNavigate('ab-assessment')}>Buka AB Assessment</Button>
+      </div>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Accreditation Scope — grouped by Accreditation Body                 */
 /* ------------------------------------------------------------------ */
 export function AccreditationScope({ ctx, onNavigate }) {

@@ -21,6 +21,8 @@
  * AI may SUGGEST a status; only a human writes it.
  */
 
+import { enqueue } from './collector.js';
+
 const PREFIX = 'nexreadiness';
 
 const hasStorage = () =>
@@ -41,6 +43,18 @@ export const SIGNOFF_STATUSES = [
 export const SEVERITIES = ['blocker', 'major', 'minor', 'info'];
 
 /**
+ * How much of a reviewer's question travels to the collector. The reviewer's
+ * OWN WORDS are what turn the CLARIFICATION_NEEDED list into a usable KB gap
+ * list instead of a bare count -- without them you know 7 questions failed on
+ * "Dashboard" but never what was asked (measured 2026-09-19: 7 CLARIFICATION
+ * vs 1 ANSWERED in real collector data, with no way to act on it). The
+ * always-visible transparency notice already tells reviewers their questions
+ * are recorded, so this delivers what the notice promises. Capped so one
+ * pasted essay cannot blow the collector's 64 KB body limit.
+ */
+export const MAX_RECORDED_TEXT = 500;
+
+/**
  * Mandatory review areas (mirrors the reference prototype's gate checklist).
  * Gate passes only at 100% coverage AND zero open blockers.
  */
@@ -55,14 +69,26 @@ export const CHECK_AREAS = [
   ['permissions', 'RBAC & segregation of duties', 'Menu/action permissions, impartiality independence.'],
   ['edgeStates', 'Empty/error/edge states', 'No-data, stale data, API failure, expired evidence.'],
 ];
-const DEFAULT_CHECKS = Object.fromEntries(CHECK_AREAS.map(([k]) => [k, false]));
 
-export function createStore(project, { environment = 'review', prototypeVersion = 'unspecified' } = {}) {
+export function createStore(project, {
+  environment = 'review', prototypeVersion = 'unspecified', feedbackApp,
+  // Per-app gate areas (docs/ai-assistant-widget-rollout-plan.md Fase 4:
+  // academy/service-desk each need their OWN CHECK_AREAS, not
+  // accreditation's 9 — defaulting to the module export keeps existing
+  // callers unchanged).
+  checkAreas = CHECK_AREAS,
+  // Whether a feedback collector actually exists for this deployment. When
+  // false the outbox still fills (nothing is lost locally) but nothing is
+  // sent — a failed request would be logged to the console by the browser
+  // itself, which academy's 92-test suite treats as a failure.
+  collectorEnabled = true,
+} = {}) {
   const key = (part) => `${PREFIX}:${project}:${part}`;
   const listeners = new Set();
+  const defaultChecks = Object.fromEntries(checkAreas.map(([k]) => [k, false]));
   // In-memory mirror: source of truth when localStorage is unavailable
   // (Node tests, private mode) and write-through cache otherwise.
-  const mem = { session: null, messages: [], findings: [], events: [], signoff: { status: 'PENDING' }, checks: { ...DEFAULT_CHECKS } };
+  const mem = { session: null, messages: [], findings: [], events: [], signoff: { status: 'PENDING' }, checks: { ...defaultChecks } };
   // Cached snapshot: useSyncExternalStore INFINITE-LOOPS (blank page) if
   // getSnapshot() returns a new object on every call — hence this cache,
   // invalidated only on write.
@@ -101,7 +127,7 @@ export function createStore(project, { environment = 'review', prototypeVersion 
   const getFindings = () => read('findings', []);
   const getEvents = () => read('events', []);
   const getSignoff = () => read('signoff', { status: 'PENDING' });
-  const getChecks = () => ({ ...DEFAULT_CHECKS, ...read('checks', {}) });
+  const getChecks = () => ({ ...defaultChecks, ...read('checks', {}) });
 
   /** Gate math (reference parity): coverage 100% + zero OPEN blockers. */
   const readiness = () => {
@@ -113,10 +139,15 @@ export function createStore(project, { environment = 'review', prototypeVersion 
     return { done, total: vals.length, percent, blockers, ready: percent === 100 && blockers === 0 };
   };
 
+  // Single funnel to the feedback collector (docs/ai-assistant-widget-
+  // rollout-plan.md Fase 1): every recorded event is enqueued here, and
+  // nowhere else in the widget talks to the network.
   const appendEvent = (type, actor, payload = {}) => {
     const events = getEvents();
-    events.push({ id: uid('ev'), type, actor, payload, at: now() });
+    const ev = { id: uid('ev'), type, actor, payload, at: now() };
+    events.push(ev);
     write('events', events);
+    enqueue(project, { ...ev, sessionId: getSession()?.id, feedbackApp, collectorEnabled });
   };
 
   return {
@@ -171,8 +202,14 @@ export function createStore(project, { environment = 'review', prototypeVersion 
       };
       messages.push(msg);
       write('messages', messages);
+      // An assistant message carries the question it answered, so each
+      // CLARIFICATION_NEEDED row is self-contained in the NDJSON.
+      const askedText = from === 'reviewer'
+        ? text
+        : [...messages].reverse().find((m) => m.from === 'reviewer')?.text;
       appendEvent(from === 'reviewer' ? 'question.asked' : 'answer.given', reviewer?.name || 'unknown', {
         classification, route, screen, messageId: msg.id,
+        question: typeof askedText === 'string' ? askedText.slice(0, MAX_RECORDED_TEXT) : undefined,
       });
       return msg;
     },
@@ -254,7 +291,7 @@ export function createStore(project, { environment = 'review', prototypeVersion 
       mem.findings = [];
       mem.events = [];
       mem.signoff = { status: 'PENDING' };
-      mem.checks = { ...DEFAULT_CHECKS };
+      mem.checks = { ...defaultChecks };
       cache = null;
       notify();
       appendEvent('session.reset', reviewedBy || 'unknown', {});

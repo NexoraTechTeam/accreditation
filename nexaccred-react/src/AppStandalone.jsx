@@ -150,7 +150,7 @@ export default function AppStandalone() {
           {renderScreen({ route, param, ctx, navigate, taskFilter, setTaskFilter })}
         </main>
       </div>
-      <ReadinessWidget project={PROJECT_ID} context={readinessCtx} />
+      <ReadinessWidget project={PROJECT_ID} context={readinessCtx} onNavigate={navigate} />
     </div>
   );
 }
