@@ -25,8 +25,36 @@
  */
 export const MIN_SCORE = 2;
 
+/**
+ * Indonesian clitics that attach to a noun and change nothing about what the
+ * noun means. "usernya", "menunya", "fiturnya" are the same question as
+ * "user", "menu", "fitur" — but the matcher is token-based (substring matching
+ * was removed in Fase 2 because 'r1' matched inside "Q1"), so they missed
+ * every keyword.
+ *
+ * Measured 2026-09-21: the owner asked "Siapa saja usernya?" and got
+ * CLARIFICATION_NEEDED, while "User apa saja yang ada?" was answered from the
+ * same rule. Stripping the clitic fixes the whole class instead of adding
+ * "usernya" to one keyword list and waiting for "menunya" to fail next.
+ *
+ * Deliberately conservative: only -nya/-ku/-mu, only on tokens long enough to
+ * still be a word afterwards (>=5 chars, so "nya" and "aku" survive intact),
+ * and only when the stem is not itself shortened into nonsense.
+ */
+const CLITICS = ['nya', 'ku', 'mu'];
+
+export function stripClitic(token) {
+  for (const clitic of CLITICS) {
+    if (token.length >= clitic.length + 3 && token.endsWith(clitic)) {
+      return token.slice(0, -clitic.length);
+    }
+  }
+  return token;
+}
+
 export function tokenize(text) {
-  return ((text || '').toLowerCase().match(/[a-z0-9]+/g)) || [];
+  const raw = ((text || '').toLowerCase().match(/[a-z0-9]+/g)) || [];
+  return raw.map(stripClitic);
 }
 
 export function canonicalPhrase(text) {
@@ -60,10 +88,19 @@ export function ruleLabel(rule) {
 export function scoreRule(questionTokens, rule, docFreq) {
   const padded = ` ${questionTokens.join(' ')} `;
   let score = 0;
+  // Two keywords that normalise to the same phrase are one keyword, not two.
+  // The RBAC rule lists both 'peran' and 'perannya'; once clitics are stripped
+  // they are identical, and counting both handed that rule a point it had not
+  // earned — enough to outrank the manual AI rule on "apa peran AI assistant
+  // di aplikasi ini?" and drop the FR-10 "advisory" answer. Caught by
+  // knowledge.smoke.mjs, 2026-09-21.
+  const seen = new Set();
   for (const kw of rule.match) {
     const kwTokens = tokenize(kw);
     if (kwTokens.length === 0) continue;
     const phrase = kwTokens.join(' ');
+    if (seen.has(phrase)) continue;
+    seen.add(phrase);
     const isPhrase = kwTokens.length > 1;
     // A short single word (<=4 chars, where every substring trap lived —
     // 'r1'/'p1'/'ai'/'kan') must match a WHOLE token. A longer single word may

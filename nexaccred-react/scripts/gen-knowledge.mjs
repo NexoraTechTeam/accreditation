@@ -64,7 +64,11 @@ function parseRoles(src) {
     const all = /\ball: true\b/.test(chunk);
     const routesRaw = (chunk.match(/routes: \[([^\]]*)\]/) || [])[1];
     const routes = routesRaw ? [...routesRaw.matchAll(/'([^']+)'/g)].map((x) => x[1]) : null;
-    roles.push({ id, name, title, all, routes });
+    // desc is what the login card actually shows a reviewer, so it is the
+    // right one-line answer to "who is this persona".
+    const desc = (chunk.match(/desc: '([^']+)'/) || [])[1] || '';
+    const dashboard = (chunk.match(/dashboard: '([^']+)'/) || [])[1] || '';
+    roles.push({ id, name, title, all, routes, desc, dashboard });
   }
   return roles;
 }
@@ -129,6 +133,79 @@ rules.push({
     (hiddenKeys.size ? `. Disembunyikan dari sidebar tapi route tetap terdaftar: ${[...hiddenKeys].join(', ')}.` : ''),
 });
 
+// A2. The login screen — where the questions actually get asked.
+//
+// Measured 2026-09-21 from the collector: **every one of the 12 questions ever
+// asked in this prototype was asked on the login screen**, and 5 of them went
+// unanswered. The generated KB described the screens *behind* the login, which
+// is where almost nobody asked anything. A reviewer opens the file, the widget
+// appears, and they ask "what is this?" and "who do I sign in as?" before they
+// have clicked anything — so those two questions need real answers here.
+//
+// Academy already had its equivalent (gen-personas-overview, 2026-09-19); this
+// is the accreditation side of the same lesson.
+//
+// Nothing here invents a credential: the review build's login is a role
+// picker, not an authenticated form (src/screens/LoginStandalone.jsx), so the
+// honest answer is "click a card — there is no password in this build".
+rules.push({
+  id: 'gen-login-personas',
+  // No bare 'user'/'akun'/'login' here, deliberately. The first draft had
+  // them and the smoke suite caught what that does: "apakah sistem ini capable
+  // menangani ribuan user?" — a capacity question, genuinely out of scope —
+  // came back answered with a list of personas. A single common word is not
+  // evidence of intent; the phrases are.
+  match: ['siapa saja user', 'siapa aja user', 'user apa saja', 'daftar user',
+    'akun demo', 'demo account', 'login sebagai apa', 'masuk sebagai siapa',
+    'siapa saja role', 'daftar role', 'role apa saja', 'daftar persona',
+    'sign in sebagai', 'siapa yang pakai', 'daftar pengguna'],
+  classification: 'ANSWERED_FROM_SOURCE',
+  sources: ['CODE'],
+  answerText: `Ada ${roles.length} peran yang bisa dipakai masuk (sumber: src/data/roles.js#ROLES): ` +
+    roles.map((r) => `${r.title} — ${r.name}`).join('; ') +
+    '. Di build review ini tidak ada kata sandi: klik salah satu kartu peran di layar login ' +
+    'dan aplikasi langsung menyesuaikan menu serta dashboard-nya ' +
+    '(sumber: src/screens/LoginStandalone.jsx).',
+});
+
+rules.push({
+  id: 'gen-app-overview',
+  // Every keyword here needs a token the question would not contain by
+  // accident. The matcher scores a bag of tokens, not a contiguous phrase, so
+  // 'aplikasi ini apa' also matched "apa peran AI assistant di aplikasi ini"
+  // and outranked the manual rule that explains the AI is advisory (FR-10).
+  // The smoke suite caught it. The real cause turned out to be double-counted
+  // keywords ('peran' and 'perannya' collapsing to one phrase after clitic
+  // stripping); once scoreRule de-duplicated them the manual AI rule had its
+  // margin back, and 'ini aplikasi apa' became safe to keep. Both suites are
+  // green with it — but it stays on this list as the first thing to remove if
+  // that question ever starts stealing answers again.
+  match: ['aplikasi ini untuk apa', 'apa itu nexaccred', 'nexaccred itu apa',
+    'tentang aplikasi', 'fungsi aplikasi', 'what is this app',
+    'aplikasi ini buat apa', 'kegunaan aplikasi', 'ini aplikasi apa'],
+  classification: 'ANSWERED_FROM_SOURCE',
+  sources: ['CODE'],
+  answerText: 'NEXACCRED adalah aplikasi kesiapan akreditasi — pertanyaan yang dijawabnya: ' +
+    '"If the Accreditation Body comes tomorrow, are we ready?" ' +
+    `(sumber: src/screens/LoginStandalone.jsx). Isinya ${navItems.length} layar dalam ` +
+    `${groups.length} grup menu, dan tampilannya menyesuaikan peran yang dipakai masuk — ` +
+    `ada ${roles.length} peran, masing-masing dengan menu dan dashboard sendiri ` +
+    '(sumber: src/data/roles.js).',
+});
+
+rules.push({
+  id: 'gen-getting-started',
+  match: ['mulai dari mana', 'cara mulai', 'langkah pertama', 'bagaimana cara login',
+    'cara login', 'cara masuk', 'how to start', 'gimana mulainya'],
+  classification: 'ANSWERED_FROM_SOURCE',
+  sources: ['CODE'],
+  answerText: 'Mulai dari layar login: pilih satu kartu peran (tanpa kata sandi di build review ini). ' +
+    `Setelah masuk, menu kiri berisi ${groups.length} grup: ` +
+    groups.map((g) => g.label).join(', ') +
+    '. Kalau ingin ditemani, tekan "Mulai tur berpandu" di widget ini — ' +
+    'ia akan mengantar layar per layar sesuai area penilaian.',
+});
+
 // B. per-role access
 for (const role of roles) {
   const routeList = role.all ? navItems.map((i) => i.key) : (role.routes || []);
@@ -185,4 +262,4 @@ const body = `export const GENERATED_RULES = [\n${rules.map((r) => `  {\n` +
   `  },\n`).join('')}];\n`;
 
 writeFileSync(path.join(ROOT, 'src/widget/knowledge.generated.js'), header + '\n' + body);
-console.log(`gen-knowledge: wrote ${rules.length} rules (1 nav overview, ${roles.length} role, ${navItems.length} screen) to src/widget/knowledge.generated.js`);
+console.log(`gen-knowledge: wrote ${rules.length} rules (1 nav overview, 3 login/orientation, ${roles.length} role, ${navItems.length} screen) to src/widget/knowledge.generated.js`);
