@@ -17,6 +17,27 @@ export const GENERATED_RULES = [
     answer: () => `41 nav item dalam 8 grup (sumber: src/data/roles.js#NAV): (ungrouped) (Dashboard, Tasks) · Accreditation (Accreditation Bodies, Accreditation Scope, Standards, Schemes, Requirements, Compliance) · Operation (Certification Activities, Personnel & Competence, Clients, Audits, Technical Review, Certification Decisions) · Document & Evidence (Document Library, Evidence Repository, Forms & Templates, Records) · Assurance (Internal Assessment, AB Assessment, Findings, CAPA, Risk, Impartiality) · Intelligence (AI Accreditation Assistant, Gap Analysis, Assessment Simulator, Impact Analysis, Readiness) · Reporting (Compliance Report, Assessment Pack, Management Report, Analytics) · Administration (Users, Roles, Organization, Workflow, Notifications, Configuration, Integrations, Audit Trail). Disembunyikan dari sidebar tapi route tetap terdaftar: ai-assistant.`,
   },
   {
+    id: 'gen-login-personas',
+    match: ['siapa saja user', 'siapa aja user', 'user apa saja', 'daftar user', 'akun demo', 'demo account', 'login sebagai apa', 'masuk sebagai siapa', 'siapa saja role', 'daftar role', 'role apa saja', 'daftar persona', 'sign in sebagai', 'siapa yang pakai', 'daftar pengguna'],
+    classification: 'ANSWERED_FROM_SOURCE',
+    sources: ['CODE'],
+    answer: () => `Ada 6 peran yang bisa dipakai masuk (sumber: src/data/roles.js#ROLES): Head of Accreditation — Joan Marsh; Internal Auditor — Maria Santos; Impartiality Committee — K. Devi; Accreditation Staff — Rahayu Ningsih; Document Controller — Helda Mutiara; System Administrator — R. Alvi. Di build review ini tidak ada kata sandi: klik salah satu kartu peran di layar login dan aplikasi langsung menyesuaikan menu serta dashboard-nya (sumber: src/screens/LoginStandalone.jsx).`,
+  },
+  {
+    id: 'gen-app-overview',
+    match: ['aplikasi ini untuk apa', 'apa itu nexaccred', 'nexaccred itu apa', 'tentang aplikasi', 'fungsi aplikasi', 'what is this app', 'aplikasi ini buat apa', 'kegunaan aplikasi', 'ini aplikasi apa'],
+    classification: 'ANSWERED_FROM_SOURCE',
+    sources: ['CODE'],
+    answer: () => `NEXACCRED adalah aplikasi kesiapan akreditasi — pertanyaan yang dijawabnya: "If the Accreditation Body comes tomorrow, are we ready?" (sumber: src/screens/LoginStandalone.jsx). Isinya 41 layar dalam 8 grup menu, dan tampilannya menyesuaikan peran yang dipakai masuk — ada 6 peran, masing-masing dengan menu dan dashboard sendiri (sumber: src/data/roles.js).`,
+  },
+  {
+    id: 'gen-getting-started',
+    match: ['mulai dari mana', 'cara mulai', 'langkah pertama', 'bagaimana cara login', 'cara login', 'cara masuk', 'how to start', 'gimana mulainya'],
+    classification: 'ANSWERED_FROM_SOURCE',
+    sources: ['CODE'],
+    answer: () => `Mulai dari layar login: pilih satu kartu peran (tanpa kata sandi di build review ini). Setelah masuk, menu kiri berisi 8 grup: (ungrouped), Accreditation, Operation, Document & Evidence, Assurance, Intelligence, Reporting, Administration. Kalau ingin ditemani, tekan "Mulai tur berpandu" di widget ini — ia akan mengantar layar per layar sesuai area penilaian.`,
+  },
+  {
     id: 'gen-role-routes-head',
     match: ['head', 'head of accreditation', 'sebagai head of accreditation', 'akses head'],
     classification: 'ANSWERED_FROM_SOURCE',
