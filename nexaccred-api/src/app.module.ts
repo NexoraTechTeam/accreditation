@@ -17,6 +17,7 @@ import { RiskModule } from './modules/risk.module';
 import { TasksModule } from './modules/tasks.module';
 import { DocumentsModule } from './modules/documents.module';
 import { AdminModule } from './modules/admin.module';
+import { EvidenceModule } from './modules/evidence.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AdminModule } from './modules/admin.module';
     TasksModule,
     DocumentsModule,
     AdminModule,
+    EvidenceModule,
   ],
   controllers: [HealthController],
 })

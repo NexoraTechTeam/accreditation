@@ -72,6 +72,10 @@ export default function App() {
   const [requiredDocTypes, setRequiredDocTypes] = useState(D.initialRequiredDocTypes);
   const [tasks] = useState(D.initialTasks);
 
+  /* --- API-backed domain data --- */
+  const { data: apiSchemes } = useFetch('/schemes');
+  const { data: apiEvidence } = useFetch('/evidence');
+
   /* --- readiness configuration (editable in the Methodology screen) --- */
   const [weights, setWeights] = useState(DEFAULT_WEIGHTS);
   const [thresholds, setThresholds] = useState(DEFAULT_THRESHOLDS);
@@ -126,6 +130,8 @@ export default function App() {
     schemes, schemeOrder, accreditationBodies, standards, requirements, docRows,
     requiredDocTypes, tasks, abName, weights, thresholds, setWeights, setThresholds,
     overall, upcoming,
+    apiSchemes: apiSchemes || [],
+    apiEvidence: apiEvidence || [],
     addAccreditationBody: (ab) => setAccreditationBodies((p) => [...p, ab]),
     addStandard: (s) => setStandards((p) => [...p, s]),
     addRequirement: (r) => setRequirements((p) => [...p, r]),

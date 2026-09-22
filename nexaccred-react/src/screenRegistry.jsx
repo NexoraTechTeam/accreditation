@@ -208,11 +208,17 @@ function tableConfigs(ctx) {
       crumb: S('Document & Evidence'), title: 'Evidence Repository',
       sub: 'Availability, validity, completeness, authenticity, recency — evidence is judged on all five.',
       cols: [
-        { key: 'id', label: 'Evidence ID', type: 'mono' }, { key: 'ref', label: 'Requirement', type: 'mono' },
-        { key: 'type', label: 'Type' }, { key: 'status', label: 'Status', type: 'badge' },
-        { key: 'scheme', label: 'Scheme' }, { key: 'uploaded', label: 'Uploaded', type: 'mono' },
+        { key: 'evidenceCode', label: 'Evidence ID', type: 'mono' }, { key: 'complianceRecordId', label: 'Requirement', type: 'mono' },
+        { key: 'evidenceCategory', label: 'Type' }, { key: 'evidenceStatus', label: 'Status', type: 'badge' },
+        { key: 'approved', label: 'Approved' }, { key: 'uploadedAt', label: 'Uploaded', type: 'mono' },
       ],
-      rows: D.evidenceRows,
+      rows: ctx.apiEvidence.length > 0
+        ? ctx.apiEvidence.map((e) => ({
+            ...e,
+            approved: e.approved ? 'Yes' : 'No',
+            uploadedAt: e.uploadedAt ? new Date(e.uploadedAt).toLocaleDateString() : '—',
+          }))
+        : D.evidenceRows,
     },
     'forms-templates': {
       crumb: S('Document & Evidence'), title: 'Forms & Templates',
