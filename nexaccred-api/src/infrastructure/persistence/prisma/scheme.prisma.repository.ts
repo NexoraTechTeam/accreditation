@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
-import { SchemeRepositoryPort, SchemeSummary } from '../../../domain/ports/scheme.repository.port';
+import {
+  CreateSchemeData,
+  SchemeRepositoryPort,
+  SchemeSummary,
+  UpdateSchemeData,
+} from '../../../domain/ports/scheme.repository.port';
 import { Pillar, SchemeReadinessSnapshot } from '../../../domain/readiness/types';
 
 @Injectable()
@@ -13,8 +18,10 @@ export class SchemePrismaRepository implements SchemeRepositoryPort {
       id: s.id,
       name: s.name,
       fullName: s.fullName,
+      conformityType: s.conformityType,
       lifecycleStatus: s.lifecycleStatus,
       accreditationBodyId: s.accreditationBodyId,
+      clientCount: s.clientCount,
     }));
   }
 
@@ -25,9 +32,41 @@ export class SchemePrismaRepository implements SchemeRepositoryPort {
       id: s.id,
       name: s.name,
       fullName: s.fullName,
+      conformityType: s.conformityType,
       lifecycleStatus: s.lifecycleStatus,
       accreditationBodyId: s.accreditationBodyId,
+      clientCount: s.clientCount,
     };
+  }
+
+  async create(data: CreateSchemeData): Promise<SchemeSummary> {
+    const s = await this.prisma.scheme.create({ data });
+    return {
+      id: s.id,
+      name: s.name,
+      fullName: s.fullName,
+      conformityType: s.conformityType,
+      lifecycleStatus: s.lifecycleStatus,
+      accreditationBodyId: s.accreditationBodyId,
+      clientCount: s.clientCount,
+    };
+  }
+
+  async update(schemeId: string, data: UpdateSchemeData): Promise<SchemeSummary> {
+    const s = await this.prisma.scheme.update({ where: { id: schemeId }, data });
+    return {
+      id: s.id,
+      name: s.name,
+      fullName: s.fullName,
+      conformityType: s.conformityType,
+      lifecycleStatus: s.lifecycleStatus,
+      accreditationBodyId: s.accreditationBodyId,
+      clientCount: s.clientCount,
+    };
+  }
+
+  async delete(schemeId: string): Promise<void> {
+    await this.prisma.scheme.delete({ where: { id: schemeId } });
   }
 
   async getReadinessSnapshot(schemeId: string): Promise<SchemeReadinessSnapshot | null> {

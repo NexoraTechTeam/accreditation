@@ -4,9 +4,22 @@ export interface SchemeSummary {
   id: string;
   name: string;
   fullName: string;
+  conformityType: string;
   lifecycleStatus: 'draft' | 'active' | 'suspended';
   accreditationBodyId: string;
+  clientCount: number;
 }
+
+export interface CreateSchemeData {
+  name: string;
+  fullName: string;
+  conformityType: string;
+  accreditationBodyId: string;
+  lifecycleStatus?: 'draft' | 'active' | 'suspended';
+  clientCount?: number;
+}
+
+export type UpdateSchemeData = Partial<CreateSchemeData>;
 
 export const SCHEME_REPOSITORY_PORT = Symbol('SCHEME_REPOSITORY_PORT');
 
@@ -18,6 +31,9 @@ export const SCHEME_REPOSITORY_PORT = Symbol('SCHEME_REPOSITORY_PORT');
 export interface SchemeRepositoryPort {
   findAll(): Promise<SchemeSummary[]>;
   findById(schemeId: string): Promise<SchemeSummary | null>;
+  create(data: CreateSchemeData): Promise<SchemeSummary>;
+  update(schemeId: string, data: UpdateSchemeData): Promise<SchemeSummary>;
+  delete(schemeId: string): Promise<void>;
 
   /**
    * Assembles everything the readiness engine needs for one scheme — pillar
