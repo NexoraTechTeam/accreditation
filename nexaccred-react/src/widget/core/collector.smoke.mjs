@@ -26,7 +26,15 @@ globalThis.window = {
   addEventListener: () => {},
 };
 globalThis.document = { addEventListener: () => {}, visibilityState: 'visible' };
-globalThis.navigator = { sendBeacon: () => false };
+try {
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { sendBeacon: () => false },
+    writable: true,
+    configurable: true,
+  });
+} catch {
+  globalThis.navigator.sendBeacon = () => false;
+}
 
 let fetchShouldFail = true;
 let lastRequest = null;
