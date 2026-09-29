@@ -168,6 +168,10 @@ export function renderScreen({ route, param, ctx, navigate, taskFilter, setTaskF
 /* Config-driven list screens — one component, many screens. */
 function tableConfigs(ctx) {
   const S = (label) => [{ label }];
+  // Shared by App.jsx (API-backed ctx: apiEvidence/apiSchemes always arrays)
+  // and AppStandalone.jsx (offline ctx: no API fields) — fall back to [] so
+  // the review build never crashes on routes it doesn't even render.
+  const apiEvidence = ctx.apiEvidence || [];
   return {
     standards: {
       crumb: S('Accreditation'), title: 'Standards Library',
@@ -212,13 +216,22 @@ function tableConfigs(ctx) {
         { key: 'evidenceCategory', label: 'Type' }, { key: 'evidenceStatus', label: 'Status', type: 'badge' },
         { key: 'approved', label: 'Approved' }, { key: 'uploadedAt', label: 'Uploaded', type: 'mono' },
       ],
-      rows: ctx.apiEvidence.length > 0
-        ? ctx.apiEvidence.map((e) => ({
+      rows: apiEvidence.length > 0
+        ? apiEvidence.map((e) => ({
             ...e,
             approved: e.approved ? 'Yes' : 'No',
             uploadedAt: e.uploadedAt ? new Date(e.uploadedAt).toLocaleDateString() : '—',
           }))
-        : D.evidenceRows,
+        // Offline review build: translate legacy sample rows to the
+        // API column shape above so both entries render the same table.
+        : D.evidenceRows.map((r) => ({
+            evidenceCode: r.id,
+            complianceRecordId: r.ref,
+            evidenceCategory: r.type,
+            evidenceStatus: r.status,
+            approved: '—',
+            uploadedAt: r.uploaded,
+          })),
     },
     'forms-templates': {
       crumb: S('Document & Evidence'), title: 'Forms & Templates',
