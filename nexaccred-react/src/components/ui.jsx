@@ -123,8 +123,14 @@ export function DataTable({ columns, rows, onRowClick }) {
   const renderCell = (col, row) => {
     const v = row[col.key];
     switch (col.type) {
-      case 'badge':
-        return <Badge level={v.level}>{v.label}</Badge>;
+      case 'badge': {
+        // Badge cells may hold {level,label} objects (sample data via ev()),
+        // plain API strings ('Verified'), or nothing at all (column/row
+        // schema drift). Never let a cell unmount the whole screen.
+        const level = v?.level || 'gray';
+        const label = v?.label ?? (v == null ? '—' : String(v));
+        return <Badge level={level}>{label}</Badge>;
+      }
       case 'mono':
         return <span className="text-xs text-ink-muted">{v}</span>;
       case 'bar':
